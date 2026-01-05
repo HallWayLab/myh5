@@ -4,14 +4,14 @@ import { GameState, Particle, Obstacle } from '../types';
 import { 
   WORLD_WIDTH, TRACK_LENGTH, GRAVITY, BRAKE_FORCE, 
   MAX_SPEED, MIN_SPEED, BLADDER_MAX, PRESSURE_GROWTH, 
-  TOILET_POSITION, COLORS, LATERAL_SPEED, COLLISION_RADIUS, OBSTACLE_SPAWN_CHANCE 
+  TOILET_POSITION, COLORS, LATERAL_SPEED, COLLISION_RADIUS 
 } from '../constants';
 
 interface GameViewProps {
   onGameOver: (state: GameState, score?: number) => void;
 }
 
-const PLAYER_VISUAL_Y = 200; // 人物在屏幕上的固定高度（上半部分）
+const PLAYER_VISUAL_Y = 200; 
 
 const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,10 +45,8 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
   const handleInput = (e: React.PointerEvent) => {
     if (gameStateRef.current !== GameState.PLAYING) return;
     
-    // Braking
     speedRef.current = Math.max(MIN_SPEED, speedRef.current - BRAKE_FORCE);
     
-    // Lateral movement based on tap position
     const rect = canvasRef.current?.getBoundingClientRect();
     if (rect) {
       const tapX = e.clientX - rect.left;
@@ -58,8 +56,6 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
         playerLateralXRef.current = Math.min(WORLD_WIDTH - 60, playerLateralXRef.current + LATERAL_SPEED);
       }
     }
-
-    // 粒子在人物脚下产生
     createParticles(playerLateralXRef.current, PLAYER_VISUAL_Y + 15, '#ffffff', 10, 4);
   };
 
@@ -74,9 +70,8 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
     setDistance(distanceRef.current);
     setCurrentSpeed(speedRef.current);
 
-    // Obstacle Generation
     if (distanceRef.current - lastSpawnDistanceRef.current > 150) {
-      if (Math.random() < 0.6 && distanceRef.current < TOILET_POSITION - 1000) {
+      if (Math.random() < 0.6 && distanceRef.current < TOILET_POSITION - 800) {
         obstaclesRef.current.push({
           id: Date.now() + Math.random(),
           x: 70 + Math.random() * (WORLD_WIDTH - 140),
@@ -87,13 +82,11 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
       lastSpawnDistanceRef.current = distanceRef.current;
     }
 
-    // Collision Detection (Obstacles)
     const playerY_in_world = distanceRef.current + PLAYER_VISUAL_Y; 
     for (const obs of obstaclesRef.current) {
         const dx = obs.x - playerLateralXRef.current;
         const dy = obs.y - playerY_in_world;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        
         if (dist < COLLISION_RADIUS + 10) {
             gameStateRef.current = GameState.CRASHED;
             createParticles(playerLateralXRef.current, PLAYER_VISUAL_Y, COLORS.BLOOD, 60, 15);
@@ -102,11 +95,9 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
         }
     }
 
-    // Cleanup old obstacles
     obstaclesRef.current = obstaclesRef.current.filter(obs => obs.y > distanceRef.current - 200);
 
-    // WIN / LOSE CONDITIONS
-    // Bladder explosion check
+    // 判定逻辑
     if (pressureRef.current >= BLADDER_MAX) {
       gameStateRef.current = GameState.EXPLODED;
       createParticles(playerLateralXRef.current, PLAYER_VISUAL_Y, COLORS.EXPLOSION, 60, 15);
@@ -114,17 +105,16 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
       return;
     }
 
-    // Precise Toilet Collision Check
+    // 厕所精确碰撞判定
     const toiletYInWorld = TOILET_POSITION;
     const verticalDistToToilet = toiletYInWorld - playerY_in_world;
 
-    // Check if player is overlapping with the toilet area
-    // The toilet is 80px wide, centered. So x range is (WORLD_WIDTH/2 - 40) to (WORLD_WIDTH/2 + 40)
-    if (verticalDistToToilet < 40 && verticalDistToToilet > -40) {
+    // 当滑雪者坐标接近厕所中心 Y 坐标时进行判定
+    if (verticalDistToToilet < 30 && verticalDistToToilet > -30) {
       const horizontalDist = Math.abs(playerLateralXRef.current - WORLD_WIDTH / 2);
+      // 厕所宽度 80px，判断玩家是否在中心 40px 范围内
       if (horizontalDist < 40) {
-        // Player hit the toilet! Check speed.
-        if (speedRef.current > MAX_SPEED * 0.4) { // Requires slowing down to enter safely
+        if (speedRef.current > MAX_SPEED * 0.45) { // 进坑速度限制
             gameStateRef.current = GameState.CRASHED;
             createParticles(playerLateralXRef.current, PLAYER_VISUAL_Y, COLORS.BLOOD, 60, 15);
             onGameOver(GameState.CRASHED);
@@ -136,14 +126,13 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
       }
     }
 
-    // If player passes the toilet completely without entering it
+    // 如果错过了厕所（已经滑过厕所一定距离）
     if (playerY_in_world > toiletYInWorld + 60) {
       gameStateRef.current = GameState.CRASHED;
       onGameOver(GameState.CRASHED);
       return;
     }
 
-    // Update Particles
     particlesRef.current.forEach(p => {
       p.x += p.vx;
       p.y += p.vy;
@@ -170,7 +159,6 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw Static Scenery (Side Trees)
     for (let i = -1; i < 8; i++) {
         const dY = (i * 300) - (distanceRef.current % 300);
         ctx.fillStyle = '#166534';
@@ -178,33 +166,19 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
         ctx.beginPath(); ctx.moveTo(width - 25, dY + 150); ctx.lineTo(width - 45, dY + 200); ctx.lineTo(width - 5, dY + 200); ctx.fill();
     }
 
-    // Draw Obstacles
     obstaclesRef.current.forEach(obs => {
         const screenY = obs.y - distanceRef.current;
         if (screenY > -100 && screenY < height + 100) {
             if (obs.type === 'tree') {
-                ctx.fillStyle = COLORS.TREE;
-                ctx.beginPath();
-                ctx.moveTo(obs.x, screenY - 25);
-                ctx.lineTo(obs.x - 15, screenY + 10);
-                ctx.lineTo(obs.x + 15, screenY + 10);
-                ctx.fill();
-                ctx.fillStyle = '#451a03';
-                ctx.fillRect(obs.x - 3, screenY + 10, 6, 8);
+                ctx.fillStyle = '#166534';
+                ctx.beginPath(); ctx.moveTo(obs.x, screenY - 25); ctx.lineTo(obs.x - 15, screenY + 10); ctx.lineTo(obs.x + 15, screenY + 10); ctx.fill();
+                ctx.fillStyle = '#451a03'; ctx.fillRect(obs.x - 3, screenY + 10, 6, 8);
             } else {
-                ctx.fillStyle = COLORS.ROCK;
-                ctx.beginPath();
-                ctx.arc(obs.x, screenY, 12, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#475569';
-                ctx.beginPath();
-                ctx.arc(obs.x - 3, screenY - 3, 5, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(obs.x, screenY, 12, 0, Math.PI * 2); ctx.fill();
             }
         }
     });
 
-    // Draw Finish Line / Toilet
     const toiletYInWorld = TOILET_POSITION;
     const screenToiletY = toiletYInWorld - distanceRef.current;
     if (screenToiletY > -100 && screenToiletY < height + 100) {
@@ -218,33 +192,22 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
       ctx.fillText("厕所", width / 2, screenToiletY - 15);
     }
 
-    // Particles
     particlesRef.current.forEach(p => {
       ctx.fillStyle = p.color;
       ctx.globalAlpha = p.life;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.color === '#ffffff' ? 3 + p.life * 5 : 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.color === '#ffffff' ? 3 + p.life * 5 : 4, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
     });
 
-    // Draw Player
     const playerX = playerLateralXRef.current;
     const playerY = PLAYER_VISUAL_Y;
     
-    // Skis
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(playerX - 10, playerY - 10); ctx.lineTo(playerX - 10, playerY + 30);
-    ctx.moveTo(playerX + 10, playerY - 10); ctx.lineTo(playerX + 10, playerY + 30);
-    ctx.stroke();
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(playerX - 10, playerY - 10); ctx.lineTo(playerX - 10, playerY + 30);
+    ctx.moveTo(playerX + 10, playerY - 10); ctx.lineTo(playerX + 10, playerY + 30); ctx.stroke();
 
-    // Body
     ctx.fillStyle = COLORS.PLAYER;
     ctx.beginPath(); ctx.arc(playerX, playerY, 12, 0, Math.PI * 2); ctx.fill();
-    
-    // Head/Helmet
     ctx.fillStyle = '#1e293b';
     ctx.beginPath(); ctx.arc(playerX, playerY - 5, 6, 0, Math.PI * 2); ctx.fill();
 
@@ -288,10 +251,8 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
         style={{ width: `${WORLD_WIDTH}px` }}
       />
       
-      {/* HUD Container */}
       <div className="absolute inset-x-0 top-0 p-4 flex flex-col items-center pointer-events-none space-y-3">
         <div className="w-full max-w-[320px] space-y-3">
-          
           <div className="bg-white/95 p-3 rounded-xl shadow-2xl border-b-4 border-red-500">
             <div className="flex justify-between items-center mb-1">
               <span className={`text-[10px] font-black uppercase ${bladderPercent > 80 ? 'animate-pulse text-red-600' : 'text-gray-500'}`}>
@@ -330,19 +291,15 @@ const GameView: React.FC<GameViewProps> = ({ onGameOver }) => {
              </div>
              <span className="text-base">🚽</span>
           </div>
-
         </div>
       </div>
 
       {distance < 1000 && (
         <div className="absolute inset-x-0 bottom-32 flex flex-col items-center pointer-events-none space-y-2 text-center px-4">
             <div className="bg-blue-600 text-white px-6 py-2 rounded-full shadow-lg font-black text-lg border-2 border-white animate-bounce">
-              点击左右两侧：控制方向 & 减速！
+              点击两侧移动并刹车
             </div>
-            <div className="flex justify-center space-x-20 opacity-50">
-                <div className="text-4xl text-blue-800">⬅️</div>
-                <div className="text-4xl text-blue-800">➡️</div>
-            </div>
+            <p className="text-blue-900 font-bold bg-white/50 px-2 rounded">对准厕所，终点前减速！</p>
         </div>
       )}
     </div>
